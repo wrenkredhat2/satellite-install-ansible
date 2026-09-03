@@ -1,0 +1,56 @@
+---
+- name: Manage Satellite Server via Vaulted File
+  hosts: localhost
+  become: false
+  gather_facts: false
+
+  # 1. Load the encrypted vault file
+  vars_files:
+    - vault.yml
+
+  # 2. Variables automatically apply to all redhat.satellite modules
+  module_defaults:
+    group/redhat.satellite.satellite:
+      server_url: "{{ satellite_url }}"
+      username: "{{ satellite_username }}"
+      password: "{{ satellite_password }}"
+      validate_certs: "{{ satellite_validate_certs }}"
+
+  tasks:
+    - name: Obtain temporary access token
+      ansible.builtin.uri:
+        url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: refresh_token
+          client_id: rhsm-api
+          refresh_token: "{{ rh_offline_token }}"
+      register: rh_auth
+
+    - name: Create Organization
+      redhat.satellite.organization:
+        name: "Main_Org"
+        state: present
+
+    - name: Create Location
+      redhat.satellite.location:
+        name: "Datacenter_1"
+        organizations:
+          - "Main_Org"
+        state: present
+
+    - name: Create Lifecycle Environment
+      redhat.satellite.lifecycle_environment:
+        name: "Production"
+        organization: "Main_Org"
+        prior: "Library"
+        state: present
+
+
+
+#    - name: Ensure the Production Organization exists
+#      redhat.satellite.organization:
+#        name: "Enterprise_Org"
+#        description: "Main Organization for Corporate Servers"
+#        state: present

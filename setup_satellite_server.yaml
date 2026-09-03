@@ -1,0 +1,224 @@
+---
+- name: Manage Satellite Server via Vaulted File
+  hosts: kvm_hosts
+  become: false
+  gather_facts: true
+
+  vars_files:
+    - vault.yml
+
+  module_defaults:
+    group/theforeman.foreman.foreman:
+      server_url: "{{ satellite_url }}"
+      username: "{{ satellite_username }}"
+      password: "{{ satellite_password }}"
+      validate_certs: "{{ satellite_validate_certs }}"
+
+  tasks:
+    - name: Ensure KVM and virt-install packages are installed
+      ansible.builtin.package:
+        name:
+          - virt-install
+          - libvirt
+          - qemu-kvm
+        state: present
+
+    - name: Ensure libvirtd service is running and enabled
+      ansible.builtin.systemd:
+        name: libvirtd
+        state: started
+        enabled: true
+
+    - name: Obtain temporary access token
+      ansible.builtin.uri:
+        url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: refresh_token
+          client_id: rhsm-api
+          refresh_token: "{{ rh_offline_token }}"
+      register: rh_auth
+      when: rh_offline_token is defined
+
+    - name: Ensure image directory exists
+      ansible.builtin.file:
+        path: "{{ iso_path | dirname }}"
+        state: directory
+        mode: '0755'
+
+    - name: Download RHEL ISO from Red Hat Customer Portal
+      ansible.builtin.get_url:
+        url: "https://api.access.redhat.com/management/v1/images/{{ iso_checksum }}/download"
+        dest: "{{ iso_path }}"
+        headers:
+          Authorization: "Bearer {{ rh_auth.json.access_token }}"
+        mode: '0644'
+      async: 3600
+      poll: 10
+      when: rh_offline_token is defined
+
+    - name: Gather file facts and calculate checksum
+      ansible.builtin.stat:
+        path: "{{ iso_path }}"
+        checksum_algorithm: sha256
+      register: downloaded_file
+
+    - name: Verify file existence, type, and checksum
+      ansible.builtin.assert:
+        that:
+          - downloaded_file.stat.exists
+          - downloaded_file.stat.isreg
+          - downloaded_file.stat.size > 0
+          - downloaded_file.stat.checksum == iso_checksum
+        fail_msg: "Verification failed! File is missing, corrupt, or checksum mismatched."
+        success_msg: "Checksum verified successfully for {{ iso_path }}"
+
+    - name: Stop VM if running
+      ansible.builtin.command: "virsh destroy {{ vm_name }}"
+      register: virsh_destroy
+      failed_when: false
+      changed_when: virsh_destroy.rc == 0
+
+    - name: Undefine VM domain definition
+      ansible.builtin.command: "virsh undefine {{ vm_name }}"
+      register: virsh_undefine
+      failed_when: false
+      changed_when: virsh_undefine.rc == 0
+
+    - name: Generate Kickstart file for unattended installation
+      ansible.builtin.copy:
+        dest: "{{ iso_path | dirname }}/{{ vm_name }}-ks.cfg"
+        mode: '0644'
+        content: |
+          # RHEL 9 Kickstart
+          text
+          cdrom
+          lang en_US.UTF-8
+          keyboard us
+          timezone Europe/Berlin --utc
+          
+          # Netzwerk via DHCP (libvirt default network)
+          network --bootproto=dhcp --device=link --activate --onboot=on --hostname={{ vm_name }}.lab.local
+          
+          # Root Passwort
+          rootpw --plaintext {{ vm_root_password }}
+          
+          # Festplatten-Partitionierung automatisch
+          zerombr
+          clearpart --all --initlabel
+          autopart --type=lvm
+          
+          # Minimal-Installation
+          %packages
+          @^minimal-environment
+          qemu-guest-agent
+          %end
+          
+          # Nach der Installation automatisch neustarten
+          reboot
+
+    - name: Provision virtual machine via virt-install (Unattended)
+      ansible.builtin.command: >
+        virt-install
+        --name {{ vm_name }}
+        --memory {{ vm_ram_mb }}
+        --vcpus {{ vm_vcpus }}
+        --disk path={{ vm_disk_path }},size={{ vm_disk_size | regex_replace('[^0-9]', '') }},format=qcow2
+        --location {{ iso_path }}
+        --os-variant {{ os_variant }}
+        --network network={{ network_name }}
+        --graphics none
+        --noautoconsole
+        --initrd-inject "{{ iso_path | dirname }}/{{ vm_name }}-ks.cfg"
+        --extra-args "inst.ks=file:/{{ vm_name }}-ks.cfg console=ttyS0,115200n8 serial"
+      args:
+        creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
+
+    - name: Pause for 60 seconds to allow installer boot and disk initialization
+      ansible.builtin.pause:
+        seconds: 60
+
+    - name: Verify VM state after initial setup pause
+      ansible.builtin.command: "virsh domstate {{ vm_name }}"
+      register: vm_verification
+      changed_when: false
+
+    - name: Display verified VM status
+      ansible.builtin.debug:
+        msg: "VM '{{ vm_name }}' state is currently: {{ vm_verification.stdout }}"
+
+
+    - name: Power on Satellite VM
+      ansible.builtin.command: "virsh start {{ vm_name }}"
+      register: virsh_start
+      failed_when:
+        - virsh_start.rc != 0
+        - "'domain is already active' not in (virsh_start.stderr | lower)"
+      changed_when: virsh_start.rc == 0
+
+    - name: Enable VM autostart on host boot
+      ansible.builtin.command: "virsh autostart {{ vm_name }}"
+      register: virsh_autostart
+      changed_when: "'marked as autostarted' in virsh_autostart.stdout"
+      failed_when: false
+
+    - name: Wait for dynamic IP assignment via libvirt DHCP
+      ansible.builtin.command: "virsh domifaddr {{ vm_name }}"
+      register: vm_dhcp
+      until: "'ipv4' in vm_dhcp.stdout"
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Extract VM IP address
+      ansible.builtin.set_fact:
+        vm_ip: "{{ vm_dhcp.stdout | regex_search('([0-9]{1,3}\\.){3}[0-9]{1,3}') }}"
+
+    - name: Fetch Hetzner DNS Zones (Cloud API)
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/zones"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ hetzner_dns_token }}"
+      register: hetzner_zones
+      delegate_to: localhost
+
+    - name: Extract Zone ID for wrhammers-xxx.de
+      ansible.builtin.set_fact:
+        hetzner_zone_id: "{{ (hetzner_zones.json.zones | selectattr('name', 'equalto', 'wrhammers-xxx.de') | first).id }}"
+
+    - name: Delete existing A record if present
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/zones/{{ hetzner_zone_id }}/rrsets/satellite-server/A"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ hetzner_dns_token }}"
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Create or Update A Record in Hetzner DNS
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/zones/{{ hetzner_zone_id }}/rrsets"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ hetzner_dns_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "satellite-server"
+          type: "A"
+          records:
+            - value: "{{ hetzner_ip }}"
+          ttl: 300
+        status_code: [200, 201]
+      delegate_to: localhost
+
+    - name: Display connection instructions
+      ansible.builtin.debug:
+        msg:
+          - "=== SATELLITE VM IST BEREIT ==="
+          - "Interne IP der VM: {{ vm_ip }}"
+          - "Um sicher auf das Web-Interface zuzugreifen, öffne auf deinem Notebook ein Terminal und starte diesen SSH-Tunnel:"
+          - "ssh -N -L 8443:{{ vm_ip }}:443 -i ~/.ssh/hetzner_key root@{{ ansible_host | default('136.243.44.117') }}"
+          - "Danach ist Satellite im Browser unter https://localhost:8443 erreichbar."

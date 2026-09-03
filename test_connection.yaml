@@ -1,0 +1,17 @@
+---
+- name: Verbindungs- und Funktionstest
+  hosts: rhel_hosts
+  gather_facts: true
+
+  tasks:
+    - name: Hostname und OS-Version ausgeben
+      ansible.builtin.debug:
+        msg: "Erfolgreich als {{ ansible_user_id }} verbunden auf {{ ansible_fqdn }} ({{ ansible_distribution }} {{ ansible_distribution_version }})"
+
+    - name: Uptime des Systems abfragen
+      ansible.builtin.command: uptime
+      register: uptime_output
+
+    - name: Uptime anzeigen
+      ansible.builtin.debug:
+        var: uptime_output.stdout
