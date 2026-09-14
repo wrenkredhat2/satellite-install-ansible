@@ -239,13 +239,6 @@
           - " State     : {{ vm_state.stdout | trim }}"
           - "=========================================="
 
-    - name: Register VM with Red Hat Subscription Management via Activation Key
-      ansible.builtin.redhat_subscription:
-        state: present
-        activationkey: "{{ rh_activation_key }}"
-        org_id: "{{ rh_org_id }}"
-        auto_attach: true
-
     - name: Pause playbook execution for 60 seconds
       ansible.builtin.pause:
         seconds: 15
@@ -324,7 +317,6 @@
         org_id: "{{ rh_org_id }}"
         consumer_name: "{{ vm_name | default('satellite-server') }}"
         server_hostname: "subscription.rhsm.redhat.com"
-        auto_attach: false
 
     - name: Verify RHSM registration status
       ansible.builtin.command: subscription-manager status

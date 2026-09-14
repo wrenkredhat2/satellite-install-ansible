@@ -66,3 +66,11 @@ dnf install -y ansible-core
 virt-host-validate
 
 
+
+Setup VM:
+ANSIBLE_HOST_KEY_CHECKING=False sudo -E  ansible-playbook   setup_satellite_server.yaml -i ./inventory.ini  --vault-password-file .vault_pass
+ANSIBLE_HOST_KEY_CHECKING=False; ansible-playbook setup_satellite_server.yaml -i ./inventory.ini  --vault-password-file .vault_pass
+
+Setup SatelliteServer in VM:
+
+ANSIBLE_HOST_KEY_CHECKING=False sudo -E ansible-playbook setup_and_start_satellite.yaml -i ./inventory.ini --vault-password-file .vault_pass
