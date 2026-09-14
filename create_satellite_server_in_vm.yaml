@@ -1,0 +1,76 @@
+---
+- name: Discover and Ensure Satellite VM is Running
+  hosts: kvm_hosts
+  gather_facts: true
+  vars_files:
+    - vault.yml
+
+  tasks:
+    - name: Ensure Satellite VM is powered on
+      ansible.builtin.command: "virsh start {{ vm_name | default('satellite-server') }}"
+      register: virsh_start
+      failed_when: false
+      changed_when: virsh_start.rc == 0
+
+    - name: Enable autostart on host boot
+      ansible.builtin.command: "virsh autostart {{ vm_name | default('satellite-server') }}"
+      register: virsh_autostart
+      failed_when: false
+      changed_when: "'marked as autostarted' in virsh_autostart.stdout"
+
+    - name: Retrieve VM IP address from libvirt (retries until booted)
+      ansible.builtin.command: "virsh domifaddr {{ vm_name | default('satellite-server') }}"
+      register: vm_dhcp
+      until: "'ipv4' in vm_dhcp.stdout"
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Extract dynamic IPv4 address
+      ansible.builtin.set_fact:
+        vm_ip: "{{ vm_dhcp.stdout | regex_search('([0-9]{1,3}\\.){3}[0-9]{1,3}') }}"
+
+    - name: Wait for SSH port 22 to accept connections
+      ansible.builtin.wait_for:
+        host: "{{ vm_ip }}"
+        port: 22
+        state: started
+        timeout: 300
+
+    - name: Add VM to dynamic inventory with explicit SSH Key ProxyCommand
+      ansible.builtin.add_host:
+        name: "{{ vm_name | default('satellite-server') }}"
+        groups: dynamic_satellite
+        ansible_host: "{{ vm_ip }}"
+        ansible_user: root
+        ansible_password: "{{ vm_root_password }}"
+        ansible_ssh_common_args: >-
+          -o StrictHostKeyChecking=no
+          -o UserKnownHostsFile=/dev/null
+          -o IdentitiesOnly=yes
+          -o PreferredAuthentications=password,keyboard-interactive
+          -o ProxyCommand="ssh -i ~/.ssh/hetzner_key -o StrictHostKeyChecking=no -W %h:%p root@{{ ansible_host }}"
+
+- name: Execute Hello World on Satellite VM
+  hosts: dynamic_satellite
+  gather_facts: true
+
+  tasks:
+    - name: Test SSH connectivity
+      ansible.builtin.ping:
+
+    - name: Print FQDN from inside the VM
+      ansible.builtin.command: hostname -f
+      register: vm_fqdn
+      changed_when: false
+
+    - name: Display Hello World message
+      ansible.builtin.debug:
+        msg:
+          - "=========================================================="
+          - "HELLO WORLD from inside the Satellite VM!"
+          - "Target Hostname : {{ vm_fqdn.stdout }}"
+          - "Target IP       : {{ ansible_host }}"
+          - "Kernel Version  : {{ ansible_kernel }}"
+          - "OS Distribution : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "=========================================================="

@@ -1,6 +1,6 @@
 ---
 - name: Verbindungs- und Funktionstest
-  hosts: rhel_hosts
+  hosts: kvm_hosts
   gather_facts: true
 
   tasks:

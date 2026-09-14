@@ -1,5 +1,5 @@
 ---
-- name: Manage Satellite Server via Vaulted File
+- name: Provision and Verify Satellite Server VM
   hosts: kvm_hosts
   become: false
   gather_facts: true
@@ -29,7 +29,7 @@
         state: started
         enabled: true
 
-    - name: Obtain temporary access token
+    - name: Obtain temporary Red Hat access token
       ansible.builtin.uri:
         url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
         method: POST
@@ -64,7 +64,7 @@
         checksum_algorithm: sha256
       register: downloaded_file
 
-    - name: Verify file existence, type, and checksum
+    - name: Verify ISO file existence and checksum
       ansible.builtin.assert:
         that:
           - downloaded_file.stat.exists
@@ -74,6 +74,9 @@
         fail_msg: "Verification failed! File is missing, corrupt, or checksum mismatched."
         success_msg: "Checksum verified successfully for {{ iso_path }}"
 
+    # -------------------------------------------------------------------------
+    # Clean Up Old VM State
+    # -------------------------------------------------------------------------
     - name: Stop VM if running
       ansible.builtin.command: "virsh destroy {{ vm_name }}"
       register: virsh_destroy
@@ -86,7 +89,15 @@
       failed_when: false
       changed_when: virsh_undefine.rc == 0
 
-    - name: Generate Kickstart file for unattended installation
+    - name: Remove old VM disk image
+      ansible.builtin.file:
+        path: "{{ vm_disk_path }}"
+        state: absent
+
+    # -------------------------------------------------------------------------
+    # Kickstart Generation & Provisioning
+    # -------------------------------------------------------------------------
+    - name: Generate Kickstart file with root SSH key injection
       ansible.builtin.copy:
         dest: "{{ iso_path | dirname }}/{{ vm_name }}-ks.cfg"
         mode: '0644'
@@ -98,27 +109,28 @@
           keyboard us
           timezone Europe/Berlin --utc
           
-          # Netzwerk via DHCP (libvirt default network)
           network --bootproto=dhcp --device=link --activate --onboot=on --hostname={{ vm_name }}.lab.local
           
-          # Root Passwort
           rootpw --plaintext {{ vm_root_password }}
+          sshkey --username=root "{{ lookup('file', '/home/wrenk/.ssh/hetzner_key.pub') }}"
           
-          # Festplatten-Partitionierung automatisch
           zerombr
           clearpart --all --initlabel
           autopart --type=lvm
           
-          # Minimal-Installation
           %packages
           @^minimal-environment
           qemu-guest-agent
           %end
+
+          %post --erroronfail
+          mkdir -p /etc/ssh/sshd_config.d
+          echo "PermitRootLogin yes" > /etc/ssh/sshd_config.d/01-permitrootlogin.conf
+          %end
           
-          # Nach der Installation automatisch neustarten
           reboot
 
-    - name: Provision virtual machine via virt-install (Unattended)
+    - name: Provision virtual machine via virt-install (blocks until install finishes)
       ansible.builtin.command: >
         virt-install
         --name {{ vm_name }}
@@ -130,26 +142,22 @@
         --network network={{ network_name }}
         --graphics none
         --noautoconsole
+        --wait 0
         --initrd-inject "{{ iso_path | dirname }}/{{ vm_name }}-ks.cfg"
         --extra-args "inst.ks=file:/{{ vm_name }}-ks.cfg console=ttyS0,115200n8 serial"
-      args:
-        creates: "/etc/libvirt/qemu/{{ vm_name }}.xml"
 
-    - name: Pause for 60 seconds to allow installer boot and disk initialization
-      ansible.builtin.pause:
-        seconds: 60
-
-    - name: Verify VM state after initial setup pause
-      ansible.builtin.command: "virsh domstate {{ vm_name }}"
-      register: vm_verification
+    - name: Wait for dynamic IP assignment via libvirt DHCP
+      ansible.builtin.command: "virsh domifaddr {{ vm_name }}"
+      register: vm_dhcp
+      until: "'ipv4' in vm_dhcp.stdout"
+      retries: 60
+      delay: 5
       changed_when: false
 
-    - name: Display verified VM status
-      ansible.builtin.debug:
-        msg: "VM '{{ vm_name }}' state is currently: {{ vm_verification.stdout }}"
-
-
-    - name: Power on Satellite VM
+    # -------------------------------------------------------------------------
+    # Post-Install Startup & Network Discovery
+    # -------------------------------------------------------------------------
+    - name: Power on Satellite VM post-install
       ansible.builtin.command: "virsh start {{ vm_name }}"
       register: virsh_start
       failed_when:
@@ -168,14 +176,94 @@
       register: vm_dhcp
       until: "'ipv4' in vm_dhcp.stdout"
       retries: 30
-      delay: 10
+      delay: 5
       changed_when: false
 
     - name: Extract VM IP address
       ansible.builtin.set_fact:
         vm_ip: "{{ vm_dhcp.stdout | regex_search('([0-9]{1,3}\\.){3}[0-9]{1,3}') }}"
 
-    - name: Fetch Hetzner DNS Zones (Cloud API)
+    - name: Wait for dynamic IP assignment via libvirt DHCP
+      ansible.builtin.command: "virsh domifaddr {{ vm_name }}"
+
+    - name: Retrieve VM state
+      ansible.builtin.command: "virsh domstate {{ vm_name | default('satellite-server') }}"
+      register: vm_state
+      changed_when: false
+
+    - name: Retrieve VM IP details
+      ansible.builtin.command: "virsh domifaddr {{ vm_name | default('satellite-server') }}"
+      register: vm_network
+      changed_when: false
+
+    - name: Display VM operational status
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - " Target VM : {{ vm_name | default('satellite-server') }}"
+          - " State     : {{ vm_state.stdout | trim }}"
+          - " Network   :"
+          - "{{ vm_network.stdout_lines }}"
+          - "=========================================="
+
+    - name: Pause playbook execution for 60 seconds
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Wait up to 20 minutes for VM Kickstart to finish and shut off
+      ansible.builtin.command: "virsh domstate {{ vm_name | default('satellite-server') }}"
+      register: vm_state
+      until: "'shut off' in vm_state.stdout"
+      retries: 120
+      delay: 10
+      changed_when: false
+
+    - name: Power on Satellite VM after Kickstart completion
+      ansible.builtin.command: "virsh start {{ vm_name | default('satellite-server') }}"
+      register: virsh_start
+      failed_when:
+        - virsh_start.rc != 0
+        - "'domain is already active' not in (virsh_start.stderr | lower)"
+      changed_when: virsh_start.rc == 0      
+
+    - name: Retrieve VM state
+      ansible.builtin.command: "virsh domstate {{ vm_name | default('satellite-server') }}"
+      register: vm_state
+      changed_when: false
+
+    - name: Display VM operational status
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - " Target VM : {{ vm_name | default('satellite-server') }}"
+          - " State     : {{ vm_state.stdout | trim }}"
+          - "=========================================="
+
+    - name: Register VM with Red Hat Subscription Management via Activation Key
+      ansible.builtin.redhat_subscription:
+        state: present
+        activationkey: "{{ rh_activation_key }}"
+        org_id: "{{ rh_org_id }}"
+        auto_attach: true
+
+    - name: Pause playbook execution for 60 seconds
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Wait for SSH port 22 on installed OS
+      ansible.builtin.wait_for:
+        host: "{{ vm_ip }}"
+        port: 22
+        state: started
+        timeout: 1800
+
+    - name: Test SSH ping connectivity
+      ansible.builtin.ping:
+
+    # -------------------------------------------------------------------------
+    # Hetzner DNS Configuration
+    # -------------------------------------------------------------------------
+    - name: Fetch Hetzner DNS Zones
       ansible.builtin.uri:
         url: "https://api.hetzner.cloud/v1/zones"
         method: GET
@@ -184,7 +272,7 @@
       register: hetzner_zones
       delegate_to: localhost
 
-    - name: Extract Zone ID for wrhammers-xxx.de
+    - name: Extract Zone ID
       ansible.builtin.set_fact:
         hetzner_zone_id: "{{ (hetzner_zones.json.zones | selectattr('name', 'equalto', 'wrhammers-xxx.de') | first).id }}"
 
@@ -197,7 +285,7 @@
       failed_when: false
       delegate_to: localhost
 
-    - name: Create or Update A Record in Hetzner DNS
+    - name: Create A Record in Hetzner DNS
       ansible.builtin.uri:
         url: "https://api.hetzner.cloud/v1/zones/{{ hetzner_zone_id }}/rrsets"
         method: POST
@@ -214,11 +302,59 @@
         status_code: [200, 201]
       delegate_to: localhost
 
-    - name: Display connection instructions
+    # -------------------------------------------------------------------------
+    # Dynamic Inventory Registration
+    # -------------------------------------------------------------------------
+    - name: Add VM to dynamic inventory using SSH Key
+      ansible.builtin.add_host:
+        name: "{{ vm_name }}"
+        groups: dynamic_satellite
+        ansible_host: "{{ vm_ip }}"
+        ansible_user: root
+        ansible_ssh_private_key_file: "/home/wrenk/.ssh/hetzner_key"
+        ansible_ssh_common_args: >-
+          -o StrictHostKeyChecking=no
+          -o UserKnownHostsFile=/dev/null
+          -o ProxyCommand="ssh -i /home/wrenk/.ssh/hetzner_key -o StrictHostKeyChecking=no -W %h:%p root@{{ ansible_host }}"
+
+    - name: Register VM with Red Hat Subscription Management via Activation Key
+      ansible.builtin.redhat_subscription:
+        state: present
+        activationkey: "{{ rh_activation_key }}"
+        org_id: "{{ rh_org_id }}"
+        consumer_name: "{{ vm_name | default('satellite-server') }}"
+        server_hostname: "subscription.rhsm.redhat.com"
+        auto_attach: false
+
+    - name: Verify RHSM registration status
+      ansible.builtin.command: subscription-manager status
+      register: rhsm_status
+      changed_when: false
+
+    - name: Display subscription details
+      ansible.builtin.debug:
+        msg: "{{ rhsm_status.stdout_lines }}"
+
+- name: Execute Hello World on Satellite VM
+  hosts: dynamic_satellite
+  gather_facts: true
+
+  tasks:
+    - name: Test SSH ping connectivity
+      ansible.builtin.ping:
+
+    - name: Retrieve FQDN from inside the VM
+      ansible.builtin.command: hostname -f
+      register: vm_fqdn
+      changed_when: false
+
+    - name: Display Hello World execution results
       ansible.builtin.debug:
         msg:
-          - "=== SATELLITE VM IST BEREIT ==="
-          - "Interne IP der VM: {{ vm_ip }}"
-          - "Um sicher auf das Web-Interface zuzugreifen, öffne auf deinem Notebook ein Terminal und starte diesen SSH-Tunnel:"
-          - "ssh -N -L 8443:{{ vm_ip }}:443 -i ~/.ssh/hetzner_key root@{{ ansible_host | default('136.243.44.117') }}"
-          - "Danach ist Satellite im Browser unter https://localhost:8443 erreichbar."
+          - "=========================================================="
+          - "SUCCESS: Connected to Satellite VM via SSH Key!"
+          - "Target Hostname : {{ vm_fqdn.stdout }}"
+          - "Target IP       : {{ ansible_host }}"
+          - "Kernel Version  : {{ ansible_kernel }}"
+          - "OS Distribution : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "=========================================================="
