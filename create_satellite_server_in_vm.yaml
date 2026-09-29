@@ -3,7 +3,7 @@
   hosts: kvm_hosts
   gather_facts: true
   vars_files:
-    - vault.yml
+    - vault.yaml
 
   tasks:
     - name: Ensure Satellite VM is powered on
@@ -11,12 +11,6 @@
       register: virsh_start
       failed_when: false
       changed_when: virsh_start.rc == 0
-
-    - name: Enable autostart on host boot
-      ansible.builtin.command: "virsh autostart {{ vm_name | default('satellite-server') }}"
-      register: virsh_autostart
-      failed_when: false
-      changed_when: "'marked as autostarted' in virsh_autostart.stdout"
 
     - name: Retrieve VM IP address from libvirt (retries until booted)
       ansible.builtin.command: "virsh domifaddr {{ vm_name | default('satellite-server') }}"
@@ -37,23 +31,30 @@
         state: started
         timeout: 300
 
-    - name: Add VM to dynamic inventory with explicit SSH Key ProxyCommand
+    - name: Register VM in dynamic inventory using vm_ip
       ansible.builtin.add_host:
         name: "{{ vm_name | default('satellite-server') }}"
         groups: dynamic_satellite
         ansible_host: "{{ vm_ip }}"
         ansible_user: root
-        ansible_password: "{{ vm_root_password }}"
+        ansible_ssh_private_key_file: "/home/wrenk/.ssh/hetzner_key"
         ansible_ssh_common_args: >-
           -o StrictHostKeyChecking=no
           -o UserKnownHostsFile=/dev/null
-          -o IdentitiesOnly=yes
-          -o PreferredAuthentications=password,keyboard-interactive
-          -o ProxyCommand="ssh -i ~/.ssh/hetzner_key -o StrictHostKeyChecking=no -W %h:%p root@{{ ansible_host }}"
+          -o ProxyCommand="ssh -i /home/wrenk/.ssh/hetzner_key -o StrictHostKeyChecking=no -W %h:%p root@{{ ansible_host }}"
 
-- name: Execute Hello World on Satellite VM
-  hosts: dynamic_satellite
+- name: Execute Hello World and Install Satellite VM
+  hosts: satellite-server
   gather_facts: true
+  vars_files:
+    - vault.yaml
+
+  module_defaults:
+    group/redhat.satellite.satellite:
+      server_url: "{{ satellite_password }}"
+      username: "{{ satellite_username }}"
+      password: "{{ satellite_password }}"
+      validate_certs: false
 
   tasks:
     - name: Test SSH connectivity
@@ -74,3 +75,50 @@
           - "Kernel Version  : {{ ansible_kernel }}"
           - "OS Distribution : {{ ansible_distribution }} {{ ansible_distribution_version }}"
           - "=========================================================="
+
+    - name: Register system with Red Hat Subscription Manager
+      community.general.redhat_subscription:
+        state: present
+        activationkey: "{{ rh_activation_key }}"
+        org_id: "{{ rh_org_id }}"
+
+    - name: Disable all default repositories
+      ansible.builtin.command: subscription-manager repos --disable="*"
+      changed_when: false
+
+    - name: Enable required Satellite 6.16 RPM repositories for RHEL 9
+      ansible.builtin.command: >
+        subscription-manager repos
+        --enable=rhel-9-for-x86_64-baseos-rpms
+        --enable=rhel-9-for-x86_64-appstream-rpms
+        --enable=satellite-6.16-for-rhel-9-x86_64-rpms
+        --enable=satellite-maintenance-6.16-for-rhel-9-x86_64-rpms
+      changed_when: false
+
+    - name: Install Satellite RPM package
+      ansible.builtin.dnf:
+        name: satellite
+        state: present
+
+    - name: Set system hostname
+      ansible.builtin.hostname:
+        name: satellite-server.lab.local
+
+    - name: Add local FQDN entry to /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*satellite-server\.lab\.local.*'
+        line: "{{ ansible_default_ipv4.address }} satellite-server.lab.local satellite-server"
+        state: present
+
+    - name: Execute Satellite Installer configuration script
+      ansible.builtin.command: >
+        satellite-installer --scenario satellite
+        --foreman-initial-organization "{{ satellite_org }}"
+        --foreman-initial-location "{{ satellite_location }}"
+        --foreman-initial-admin-username "{{ satellite_username }}"
+        --foreman-initial-admin-password "{{ satellite_password }}"
+      async: 3600
+      poll: 30
+
+

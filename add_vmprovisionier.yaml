@@ -6,7 +6,7 @@
 
   # 1. Load the encrypted vault file
   vars_files:
-    - vault.yml
+    - vault.yaml
 
   # 2. Variables automatically apply to all redhat.satellite modules
   module_defaults:

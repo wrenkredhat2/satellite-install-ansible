@@ -5,7 +5,7 @@
   gather_facts: true
 
   vars_files:
-    - vault.yml
+    - vault.yaml
 
   module_defaults:
     group/theforeman.foreman.foreman:
@@ -15,6 +15,11 @@
       validate_certs: "{{ satellite_validate_certs }}"
 
   tasks:
+
+    - name: Force playbook to fail
+      ansible.builtin.fail:
+        msg: "Stopping execution: This task was configured to fail."
+
     - name: Ensure KVM and virt-install packages are installed
       ansible.builtin.package:
         name:

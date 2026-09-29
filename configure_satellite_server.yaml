@@ -1,0 +1,93 @@
+---
+- name: Configure Satellite Server for RHEL 10
+  hosts: satellite-server
+  gather_facts: true
+  vars_files:
+    - vault.yaml
+
+  module_defaults:
+    group/theforeman.foreman.foreman:
+      server_url: "{{ satellite_url }}"
+      username: "{{ satellite_username }}"
+      password: "{{ satellite_password }}"
+      validate_certs: false
+
+  tasks:
+    - name: Copy subscription manifest to Satellite server
+      ansible.builtin.copy:
+        src: "{{ satellite_manifest_file }}"
+        dest: /tmp/manifest.zip
+        mode: '0600'
+
+    - name: Upload subscription manifest to Foreman/Katello
+      theforeman.foreman.subscription_manifest:
+        organization: "{{ satellite_org }}"
+        manifest_path: /tmp/manifest.zip
+        state: present
+
+    - name: Enable RHEL 10 BaseOS, AppStream, and Kickstart Repositories
+      theforeman.foreman.repository_set:
+        organization: "{{ satellite_org }}"
+        product: "{{ rhel10_product }}"
+        name: "{{ item }}"
+        repositories:
+          - releasever: "{{ rhel10_releasever }}"
+        state: enabled
+      loop: "{{ rhel10_repo_sets | from_json }}"
+
+    # 2. Synchronize RPMs locally to Satellite
+    - name: Synchronize RHEL 10 Repositories
+      theforeman.foreman.repository_sync:
+        organization: "{{ satellite_org }}"
+        product: "{{ rhel10_product }}"
+        repository: "{{ item }}"
+      loop: "{{ rhel10_sync_repos | from_json }}"
+
+    # 3. Create Lifecycle Environments
+    - name: Create Development Lifecycle Environment
+      theforeman.foreman.lifecycle_environment:
+        organization: "{{ satellite_org }}"
+        name: "Development"
+        prior: "Library"
+        state: present
+
+    - name: Create Production Lifecycle Environment
+      theforeman.foreman.lifecycle_environment:
+        organization: "{{ satellite_org }}"
+        name: "Production"
+        prior: "Development"
+        state: present
+
+    # 4. Create Content View
+    - name: Create RHEL 10 Content View
+      theforeman.foreman.content_view:
+        organization: "{{ satellite_org }}"
+        name: "CV_RHEL10"
+        description: "Content View for RHEL 10 BaseOS and AppStream"
+        repositories:
+          - name: "Red Hat Enterprise Linux 10 for x86_64 - BaseOS RPMs {{ rhel10_releasever }}"
+            product: "{{ rhel10_product }}"
+          - name: "Red Hat Enterprise Linux 10 for x86_64 - AppStream RPMs {{ rhel10_releasever }}"
+            product: "{{ rhel10_product }}"
+        state: present
+
+    # 5. Publish Version 1.0 and Promote to Environments
+    - name: Publish and Promote Content View
+      theforeman.foreman.content_view_version:
+        organization: "{{ satellite_org }}"
+        content_view: "CV_RHEL10"
+        lifecycle_environments:
+          - "Development"
+          - "Production"
+        version: "1.0"
+        state: present
+
+    # 6. Create Activation Key for Client Systems
+    - name: Create Activation Key for RHEL 10 Production
+      theforeman.foreman.activation_key:
+        organization: "{{ satellite_org }}"
+        name: "ak-rhel10-production"
+        lifecycle_environment: "Production"
+        content_view: "CV_RHEL10"
+        auto_attach: true
+        state: present

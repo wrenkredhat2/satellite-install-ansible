@@ -10,9 +10,10 @@ ansible-galaxy collection install redhat.satellite
 ansible-galaxy collection install theforeman.foreman
 
 
-ansible-vault create vault.yml
+ansible-vault create vault.yaml
 mit:
 satellite_url: "https://satellite.example.com"
+
 satellite_username: "admin"
 satellite_password: "YourSecurePassword"
 satellite_validate_certs: false
@@ -71,6 +72,24 @@ Setup VM:
 ANSIBLE_HOST_KEY_CHECKING=False sudo -E  ansible-playbook   setup_satellite_server.yaml -i ./inventory.ini  --vault-password-file .vault_pass
 ANSIBLE_HOST_KEY_CHECKING=False; ansible-playbook setup_satellite_server.yaml -i ./inventory.ini  --vault-password-file .vault_pass
 
+ANSIBLE_HOST_KEY_CHECKING=False; ansible-playbook .yaml -i ./inventory.ini  --vault-password-file .vault_pass
+
 Setup SatelliteServer in VM:
 
-ANSIBLE_HOST_KEY_CHECKING=False sudo -E ansible-playbook setup_and_start_satellite.yaml -i ./inventory.ini --vault-password-file .vault_pass
+ANSIBLE_HOST_KEY_CHECKING=False  ansible-playbook create_satellite_server_in_vm.yaml -i ./inventory.ini --vault-password-file .vault_pass
+
+ANSIBLE_HOST_KEY_CHECKING=False  ansible-playbook configure_satellite_server.yaml -i ./inventory.ini --vault-password-file .vault_pass
+
+
+#####sudo wg-quick down wg0 && sudo wg-quick up wg0
+
+
+ssh root@136.243.44.117
+ssh root@192.168.122.177
+
+virsh domifaddr satellite-server
+
+
+ssh -D 9900 -i ~/.ssh/hetzner_key root@satellite.wrhammers-xxx.de
+--> Firefox setting proxy SOCKS-Proxy 127.0.0.1 port 9900
+URL http[s]://<Ip-of-vm>virsh
