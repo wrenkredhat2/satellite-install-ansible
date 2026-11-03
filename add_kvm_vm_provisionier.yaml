@@ -1,0 +1,166 @@
+---
+- name: Manage Satellite Server via Vaulted File
+  hosts: satellite-server
+  become: false
+  gather_facts: false
+
+  # 1. Load the encrypted vault file
+  vars_files:
+    - vault.yaml
+
+  # 2. Variables automatically apply to all redhat.satellite modules
+  module_defaults:
+    group/theforeman.foreman.foreman:
+      server_url: "{{ satellite_url }}"
+      username: "{{ satellite_username }}"
+      password: "{{ satellite_password }}"
+      validate_certs: "{{ satellite_validate_certs }}"
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # Foundation
+    # -------------------------------------------------------------------------
+    - name: Ensure x86_64 architecture exists
+      theforeman.foreman.architecture:
+        name: "x86_64"
+        state: present
+
+    # -------------------------------------------------------------------------
+    # Automated SSH Key Exchange for KVM Compute Resource
+    # -------------------------------------------------------------------------
+    - name: Trust KVM host SSH fingerprint for Foreman user
+      ansible.builtin.shell: |
+        sudo -u foreman mkdir -p ~foreman/.ssh
+        sudo -u foreman test -f ~foreman/.ssh/id_rsa || sudo -u foreman ssh-keygen -t rsa -N "" -f ~foreman/.ssh/id_rsa
+        ssh-keyscan -H {{ hetzner_ip }} >> ~foreman/.ssh/known_hosts
+        chown -R foreman:foreman ~foreman/.ssh
+        chmod 700 ~foreman/.ssh
+        chmod 644 ~foreman/.ssh/known_hosts
+      become: true
+      changed_when: false
+
+    - name: Retrieve the foreman user's public SSH key
+      ansible.builtin.command: cat ~foreman/.ssh/id_rsa.pub
+      register: foreman_pubkey
+      changed_when: false
+      become: true
+
+    - name: Dynamically register KVM host with strict SSH parameters
+      ansible.builtin.add_host:
+        name: "kvm_hypervisor_temp"
+        ansible_host: "{{ hetzner_ip }}"
+        ansible_user: "root"
+        ansible_ssh_private_key_file: "/home/wrenk/.ssh/hetzner_key"
+        ansible_ssh_extra_args: "-o IdentitiesOnly=yes"
+      changed_when: false
+
+    - name: Authorize foreman's public key on the KVM host
+      ansible.posix.authorized_key:
+        user: root
+        state: present
+        key: "{{ foreman_pubkey.stdout }}"
+      delegate_to: "kvm_hypervisor_temp"
+      become: true
+      
+    - name: Verify passwordless SSH from Foreman to KVM host
+      ansible.builtin.shell: sudo -u foreman ssh -q -o BatchMode=yes root@{{ hetzner_ip }} exit
+      register: ssh_check
+      ignore_errors: true
+      changed_when: false
+      become: true
+
+    - name: FAIL if SSH key is not configured
+      ansible.builtin.fail:
+        msg: |
+          [ERROR] The 'foreman' user cannot SSH into root@{{ hetzner_ip }}!
+          You MUST manually copy the key before continuing.
+          Run this exact command from a terminal on your Satellite server:
+          sudo -u foreman ssh-copy-id root@{{ hetzner_ip }}
+      when: ssh_check is failed
+
+    # -------------------------------------------------------------------------
+    # Satellite Infrastructure Configuration
+    # -------------------------------------------------------------------------
+    - name: Create Libvirt Compute Resource
+      theforeman.foreman.compute_resource:
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        name: "Hetzner-KVM"
+        provider: "libvirt"
+        provider_params:
+          url: "qemu+ssh://root@{{ hetzner_ip }}/system"
+        state: present
+
+    - name: Create Default KVM Compute Profile
+      theforeman.foreman.compute_profile:
+        name: "1-Small"
+        state: present
+
+    - name: Assign Hardware Specs to Compute Profile
+      theforeman.foreman.compute_attribute:
+        compute_profile: "1-Small"
+        compute_resource: "Hetzner-KVM"
+        vm_attrs:
+          cpus: "2"
+          memory: "4096"
+          volumes_attributes:
+            0:
+              pool_name: "images"
+              capacity: "20G"
+              format_type: "qcow2"
+          interfaces_attributes:
+            0:
+              network: "default"
+              model: "virtio"
+        state: present
+       
+    - name: Create DNS Domain
+      theforeman.foreman.domain:
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        name: "lab.local"
+        state: present
+
+    - name: Create KVM Default Subnet
+      theforeman.foreman.subnet:
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        name: "libvirt-default"
+        network: "192.168.122.0"
+        mask: "255.255.255.0"
+        gateway: "192.168.122.1"
+        dns_primary: "192.168.122.1"
+        ipam: "DHCP"
+        boot_mode: "DHCP"
+        domains:
+          - "lab.local"
+        state: present
+
+    - name: Create RHEL 10 Host Group
+      theforeman.foreman.hostgroup:
+        organization: "{{ satellite_org }}"
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        name: "RHEL10-KVM-Servers"
+        architecture: "x86_64"
+        operatingsystem: "RedHat 10.2"
+        ptable: "Kickstart default"
+        kickstart_repository: "Red Hat Enterprise Linux 10 for x86_64 - BaseOS Kickstart 10.2"
+        pxe_loader: "PXELinux BIOS"
+        domain: "lab.local"
+        subnet: "libvirt-default"
+        compute_resource: "Hetzner-KVM"
+        compute_profile: "1-Small"
+        lifecycle_environment: "Production"
+        content_view: "CV_RHEL10"
+        content_source: "{{ satellite_url | replace('https://', '') | replace('/', '') }}"
+        root_pass: "YourSecureRootPassword123!"
+        state: present

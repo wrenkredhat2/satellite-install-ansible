@@ -1,0 +1,325 @@
+]0;wrenk@wrenk-thinkpadp1gen5:~/CLIENTS/RH/Satellite]3008;start=a5b24f93-ace6-44ea-9bef-461f5fff9174;type=shell;machineid=e25609fcaaf44ac8ae21a67846b27b44;user=wrenk;hostname=wrenk-thinkpadp1gen5.remote.csb;bootid=ae63c862-8d6f-4e52-ad7b-cb362011385f;pid=3422599;cwd=/home/wrenk/CLIENTS/RH/Satellite\]666;vte.shell.postexec=0\]666;vte.shell.precmd!\]7;file://wrenk-thinkpadp1gen5.remote.csb/home/wrenk/CLIENTS/RH/Satellite\Thu Oct 22 12:02:38 PM CEST 2026
+]0;wrenk@wrenk-thinkpadp1gen5:~/CLIENTS/RH/Satellite]3008;end=36a372b9-1ee5-476b-a339-bf025bd27e3a;exit=success\]3008;start=a5b24f93-ace6-44ea-9bef-461f5fff9174;type=shell;machineid=e25609fcaaf44ac8ae21a67846b27b44;user=wrenk;hostname=wrenk-thinkpadp1gen5.remote.csb;bootid=ae63c862-8d6f-4e52-ad7b-cb362011385f;pid=3422599;cwd=/home/wrenk/CLIENTS/RH/Satellite\]666;vte.shell.postexec=0\]666;vte.shell.precmd!\]7;file://wrenk-thinkpadp1gen5.remote.csb/home/wrenk/CLIENTS/RH/Satellite\
+PLAY [Provision and Verify Satellite Server VM] ********************************
+
+TASK [Ensure KVM and virt-install packages are installed] **********************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Ensure libvirtd service is running and enabled] **************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Obtain temporary Red Hat access token] ***********************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Ensure image directory exists] *******************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Download RHEL ISO from Red Hat Customer Portal] **************************
+ASYNC OK on satellite.wrhammers-xxx.de: jid=j848360439916.1792519
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Gather file facts and calculate checksum] ********************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Verify ISO file existence and checksum] **********************************
+ok: [satellite.wrhammers-xxx.de] => {
+    "changed": false,
+    "msg": "Checksum verified successfully for /home/lib/libvirt/images/rhel-9-x86_64-dvd.iso"
+}
+
+TASK [Stop VM if running] ******************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Undefine VM domain definition] *******************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Remove old VM disk image] ************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Generate Kickstart file with root SSH key injection] *********************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Provision virtual machine via virt-install (blocks until install finishes)] ***
+changed: [satellite.wrhammers-xxx.de]
+
+TASK [Wait for dynamic IP assignment via libvirt DHCP] *************************
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait for dynamic IP assignment via libvirt DHCP (60 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait for dynamic IP assignment via libvirt DHCP (59 retries left).
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Power on Satellite VM post-install] **************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Enable VM autostart on host boot] ****************************************
+changed: [satellite.wrhammers-xxx.de]
+
+TASK [Wait for dynamic IP assignment via libvirt DHCP] *************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Extract VM IP address] ***************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Wait for dynamic IP assignment via libvirt DHCP] *************************
+changed: [satellite.wrhammers-xxx.de]
+
+TASK [Retrieve VM state] *******************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Retrieve VM IP details] **************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Display VM operational status] *******************************************
+ok: [satellite.wrhammers-xxx.de] => {
+    "msg": [
+        "==========================================",
+        " Target VM : satellite-server",
+        " State     : running",
+        " Network   :",
+        [
+            " Name       MAC address          Protocol     Address",
+            "-------------------------------------------------------------------------------",
+            " vnet60     52:54:00:5a:92:f8    ipv4         192.168.122.235/24"
+        ],
+        "=========================================="
+    ]
+}
+
+TASK [Pause playbook execution for 60 seconds] *********************************
+Pausing for 15 seconds
+(ctrl+C then 'C' = continue early, ctrl+C then 'A' = abort)
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Wait up to 20 minutes for VM Kickstart to finish and shut off] ***********
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (120 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (119 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (118 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (117 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (116 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (115 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (114 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (113 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (112 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (111 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (110 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (109 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (108 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (107 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (106 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (105 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (104 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (103 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (102 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (101 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (100 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (99 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (98 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (97 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (96 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (95 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (94 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (93 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (92 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (91 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (90 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (89 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (88 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (87 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (86 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (85 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (84 retries left).
+FAILED - RETRYING: [satellite.wrhammers-xxx.de]: Wait up to 20 minutes for VM Kickstart to finish and shut off (83 retries left).
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Power on Satellite VM after Kickstart completion] ************************
+changed: [satellite.wrhammers-xxx.de]
+
+TASK [Retrieve VM state] *******************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Display VM operational status] *******************************************
+ok: [satellite.wrhammers-xxx.de] => {
+    "msg": [
+        "==========================================",
+        " Target VM : satellite-server",
+        " State     : running",
+        "=========================================="
+    ]
+}
+
+TASK [Pause playbook execution for 60 seconds] *********************************
+Pausing for 15 seconds
+(ctrl+C then 'C' = continue early, ctrl+C then 'A' = abort)
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Wait for SSH port 22 on installed OS] ************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Test SSH ping connectivity] **********************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Fetch Hetzner DNS Zones] *************************************************
+ok: [satellite.wrhammers-xxx.de -> localhost]
+
+TASK [Extract Zone ID] *********************************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Delete existing A record if present] *************************************
+ok: [satellite.wrhammers-xxx.de -> localhost]
+
+TASK [Create A Record in Hetzner DNS] ******************************************
+ok: [satellite.wrhammers-xxx.de -> localhost]
+
+TASK [Add VM to dynamic inventory using SSH Key] *******************************
+changed: [satellite.wrhammers-xxx.de]
+
+TASK [Register VM with Red Hat Subscription Management via Activation Key] *****
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Verify RHSM registration status] *****************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Display subscription details] ********************************************
+ok: [satellite.wrhammers-xxx.de] => {
+    "msg": [
+        "+-------------------------------------------+",
+        "   System Status Details",
+        "+-------------------------------------------+",
+        "Overall Status: Registered"
+    ]
+}
+
+PLAY [Execute Hello World on Satellite VM] *************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [satellite-server]
+
+TASK [Delete any existing FQDN entries to prevent conflicts] *******************
+ok: [satellite-server]
+
+TASK [Add effective IP and local FQDN entry to /etc/hosts] *********************
+changed: [satellite-server]
+
+TASK [Update local SSH config with new Satellite VM IP] ************************
+changed: [satellite-server -> localhost]
+
+TASK [Retrieve FQDN from inside the VM] ****************************************
+ok: [satellite-server]
+
+TASK [Test SSH ping connectivity] **********************************************
+ok: [satellite-server]
+
+TASK [Retrieve FQDN from inside the VM] ****************************************
+ok: [satellite-server]
+
+TASK [Display Hello World execution results] ***********************************
+ok: [satellite-server] => {
+    "msg": [
+        "==========================================================",
+        "SUCCESS: Connected to Satellite VM via SSH Key!",
+        "Target Hostname : satellite-server.lab.local",
+        "Target IP       : 192.168.122.235",
+        "Kernel Version  : 5.14.0-687.5.3.el9_8.x86_64",
+        "OS Distribution : RedHat 9.8",
+        "=========================================================="
+    ]
+}
+
+PLAY RECAP *********************************************************************
+satellite-server           : ok=8    changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+satellite.wrhammers-xxx.de : ok=37   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+]0;wrenk@wrenk-thinkpadp1gen5:~/CLIENTS/RH/Satellite]3008;end=0a14a92a-9edc-4dd8-beaf-bdc3769b4418;exit=success\]3008;start=a5b24f93-ace6-44ea-9bef-461f5fff9174;type=shell;machineid=e25609fcaaf44ac8ae21a67846b27b44;user=wrenk;hostname=wrenk-thinkpadp1gen5.remote.csb;bootid=ae63c862-8d6f-4e52-ad7b-cb362011385f;pid=3422599;cwd=/home/wrenk/CLIENTS/RH/Satellite\]666;vte.shell.postexec=0\]666;vte.shell.precmd!\]7;file://wrenk-thinkpadp1gen5.remote.csb/home/wrenk/CLIENTS/RH/Satellite\Thu Oct 22 12:16:17 PM CEST 2026
+]0;wrenk@wrenk-thinkpadp1gen5:~/CLIENTS/RH/Satellite]3008;end=a533e101-fb81-47ed-bce0-8a009a8a8633;exit=success\]3008;start=a5b24f93-ace6-44ea-9bef-461f5fff9174;type=shell;machineid=e25609fcaaf44ac8ae21a67846b27b44;user=wrenk;hostname=wrenk-thinkpadp1gen5.remote.csb;bootid=ae63c862-8d6f-4e52-ad7b-cb362011385f;pid=3422599;cwd=/home/wrenk/CLIENTS/RH/Satellite\]666;vte.shell.postexec=0\]666;vte.shell.precmd!\]7;file://wrenk-thinkpadp1gen5.remote.csb/home/wrenk/CLIENTS/RH/Satellite\
+PLAY [Discover and Ensure Satellite VM is Running] *****************************
+
+TASK [Ensure Satellite VM is powered on] ***************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Retrieve VM IP address from libvirt (retries until booted)] **************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Extract dynamic IPv4 address] ********************************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Wait for SSH port 22 to accept connections] ******************************
+ok: [satellite.wrhammers-xxx.de]
+
+TASK [Register VM in dynamic inventory using vm_ip] ****************************
+changed: [satellite.wrhammers-xxx.de]
+
+PLAY [Execute Hello World and Install Satellite VM] ****************************
+
+TASK [Test SSH connectivity] ***************************************************
+ok: [satellite-server]
+
+TASK [Print FQDN from inside the VM] *******************************************
+ok: [satellite-server]
+
+TASK [Display Hello World message] *********************************************
+ok: [satellite-server] => {
+    "msg": [
+        "==========================================================",
+        "HELLO WORLD from inside the Satellite VM!",
+        "Target Hostname : satellite-server.lab.local",
+        "Target IP       : 192.168.122.235",
+        "Kernel Version  : 5.14.0-687.5.3.el9_8.x86_64",
+        "OS Distribution : RedHat 9.8",
+        "=========================================================="
+    ]
+}
+
+TASK [Register system with Red Hat Subscription Manager] ***********************
+changed: [satellite-server]
+
+TASK [Disable all default repositories] ****************************************
+ok: [satellite-server]
+
+TASK [Enable required Red Hat repositories] ************************************
+ok: [satellite-server]
+
+TASK [Install Satellite RPM package] *******************************************
+changed: [satellite-server]
+
+TASK [Wait for Satellite package installation to finish] ***********************
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (120 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (119 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (118 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (117 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (116 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (115 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (114 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (113 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (112 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (111 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (110 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (109 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (108 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (107 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (106 retries left).
+FAILED - RETRYING: [satellite-server]: Wait for Satellite package installation to finish (105 retries left).
+changed: [satellite-server]
+
+TASK [Set system hostname] *****************************************************
+ok: [satellite-server]
+
+TASK [Execute Satellite Installer configuration script] ************************
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC POLL on satellite-server: jid=j498175864190.30644 started=True finished=False
+ASYNC OK on satellite-server: jid=j498175864190.30644
+changed: [satellite-server]
+
+PLAY RECAP *********************************************************************
+satellite-server           : ok=10   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+satellite.wrhammers-xxx.de : ok=5    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+]0;wrenk@wrenk-thinkpadp1gen5:~/CLIENTS/RH/Satellite]3008;end=cfa2c5e3-6918-44a0-878f-cb529d43e12d;exit=success\]3008;start=a5b24f93-ace6-44ea-9bef-461f5fff9174;type=shell;machineid=e25609fcaaf44ac8ae21a67846b27b44;user=wrenk;hostname=wrenk-thinkpadp1gen5.remote.csb;bootid=ae63c862-8d6f-4e52-ad7b-cb362011385f;pid=3422599;cwd=/home/wrenk/CLIENTS/RH/Satellite\]666;vte.shell.postexec=0\]666;vte.shell.precmd!\]7;file://wrenk-thinkpadp1gen5.remote.csb/home/wrenk/CLIENTS/RH/Satellite\

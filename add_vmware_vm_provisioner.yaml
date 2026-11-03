@@ -1,0 +1,190 @@
+---
+- name: End-to-End VMware Infrastructure Setup and RHEL VM Provisioning on Red Hat Satellite
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # --------------------------------------------------------------------------
+    # 1. Satellite Context & Global Variables
+    # --------------------------------------------------------------------------
+    satellite_org: "Operations Department"
+    satellite_location: "moline"
+    satellite_server_fqdn: "sat01.example.com"
+    satellite_proxy: "sat01.example.com"
+
+    # --------------------------------------------------------------------------
+    # 2. Network & Domain Configuration
+    # --------------------------------------------------------------------------
+    domain_name: "example.com"
+    subnet_name: "sn-operations-department"
+    subnet_network: "10.1.10.0"
+    subnet_mask: "255.255.255.0"
+    subnet_gateway: "10.1.10.1"
+    subnet_dns_primary: "10.1.10.254"
+    subnet_from_ip: "10.1.10.149"
+    subnet_to_ip: "10.1.10.199"
+
+    # --------------------------------------------------------------------------
+    # 3. VMware vCenter Compute Resource Credentials & Cluster Specs
+    # --------------------------------------------------------------------------
+    vmware_cr_name: "cr-vcenter"
+    vmware_server: "vsca01.example.com"
+    vmware_user: "VSPHERE.LOCAL\\satadmin"
+    vmware_password: "Passw0rd!"
+    vmware_datacenter: "LabDatacenter"
+    vmware_cluster: "LabCluster"
+    vmware_datastore: "datastore1"
+    vmware_folder_path: "/LabDatacenter/vm"
+
+    # --------------------------------------------------------------------------
+    # 4. Provisioning Profiles, Templates & Content
+    # --------------------------------------------------------------------------
+    compute_profile_name: "cp-vmware-small"
+    image_name: "img-rhel8-prem-server"
+    template_uuid_or_name: "rhel83-vm-template" # Template name/UUID in vCenter
+    hostgroup_name: "hg-rhel8-prem-server"
+
+    lifecycle_env: "Production"
+    content_view_name: "CV_RHEL8"
+    activation_key_name: "ak-ops-rhel8-prem-server"
+
+    # --------------------------------------------------------------------------
+    # 5. Target Virtual Machine Configuration
+    # --------------------------------------------------------------------------
+    target_vm_name: "rhel8-vm01.example.com"
+    vm_root_password: "YourSecureRootPassword123!"
+
+  tasks:
+    # ==========================================================================
+    # INFRASTRUCTURE SETUP STAGE
+    # ==========================================================================
+
+    - name: Set Satellite to destroy associated VM in vSphere when host is deleted
+      theforeman.foreman.setting:
+        name: destroy_vm_on_host_delete
+        value: true
+
+    - name: Ensure DNS Domain exists and is assigned to Organization, Location, and Proxy
+      theforeman.foreman.domain:
+        name: "{{ domain_name }}"
+        dns_proxy: "{{ satellite_proxy }}"
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        state: present
+
+    - name: Create VMware Provisioning Subnet
+      theforeman.foreman.subnet:
+        name: "{{ subnet_name }}"
+        network: "{{ subnet_network }}"
+        mask: "{{ subnet_mask }}"
+        gateway: "{{ subnet_gateway }}"
+        dns_primary: "{{ subnet_dns_primary }}"
+        from_ip: "{{ subnet_from_ip }}"
+        to_ip: "{{ subnet_to_ip }}"
+        ipam: "DHCP"
+        boot_mode: "DHCP"
+        dns_proxy: "{{ satellite_proxy }}"
+        dhcp_proxy: "{{ satellite_proxy }}"
+        remote_execution_proxies:
+          - "{{ satellite_proxy }}"
+        domains:
+          - "{{ domain_name }}"
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        state: present
+
+    - name: Create VMware vCenter Compute Resource
+      theforeman.foreman.compute_resource:
+        name: "{{ vmware_cr_name }}"
+        provider: "vmware"
+        user: "{{ vmware_user }}"
+        password: "{{ vmware_password }}"
+        provider_params:
+          server: "{{ vmware_server }}"
+          datacenter: "{{ vmware_datacenter }}"
+          caching_enabled: true
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        state: present
+
+    # ==========================================================================
+    # COMPUTE PROFILE & IMAGE MAPPING STAGE
+    # ==========================================================================
+
+    - name: Ensure Compute Profile exists
+      theforeman.foreman.compute_profile:
+        name: "{{ compute_profile_name }}"
+        state: present
+
+    - name: Register VMware VM Template Image in Satellite
+      theforeman.foreman.image:
+        name: "{{ image_name }}"
+        compute_resource: "{{ vmware_cr_name }}"
+        operatingsystem: "RedHat 8.3"
+        architecture: "x86_64"
+        username: "root"
+        user: "root"
+        uuid: "{{ template_uuid_or_name }}"
+        state: present
+
+    - name: Assign Hardware Specs to Compute Profile for VMware
+      theforeman.foreman.compute_attribute:
+        compute_profile: "{{ compute_profile_name }}"
+        compute_resource: "{{ vmware_cr_name }}"
+        vm_attrs:
+          cpus: 2
+          memory_mb: 4096
+          cluster: "{{ vmware_cluster }}"
+          datastore: "{{ vmware_datastore }}"
+          path: "{{ vmware_folder_path }}"
+          scsi_controller_type: "VMware Paravirtual"
+        state: present
+
+    # ==========================================================================
+    # HOSTGROUP & PROVISIONING STAGE
+    # ==========================================================================
+
+    - name: Create RHEL 10 Host Group
+      theforeman.foreman.hostgroup:
+        organization: "{{ satellite_org }}"
+        organizations:
+          - "{{ satellite_org }}"
+        locations:
+          - "{{ satellite_location }}"
+        name: "RHEL10-KVM-Servers"
+        architecture: "x86_64"
+        operatingsystem: "RedHat 10.0"          # Adjust to exact OS name in Satellite
+        ptable: "Kickstart default"              # Default Kickstart partition table
+        medium: "Red Hat Enterprise Linux 10"    # Or use kickstart_repository
+        pxe_loader: "PXELinux BIOS"              # Or "Grub2 UEFI" depending on VM firmware
+        domain: "lab.local"
+        subnet: "libvirt-default"
+        compute_resource: "Hetzner-KVM"
+        compute_profile: "1-Small"
+        lifecycle_environment: "Production"
+        content_view: "CV_RHEL10"
+        content_source: "{{ satellite_url | replace('https://', '') | replace('/', '') }}"
+        root_pass: "YourSecureRootPassword123!"
+        state: present
+
+    - name: Provision RHEL VM to VMware vSphere
+      theforeman.foreman.host:
+        name: "{{ target_vm_name }}"
+        organization: "{{ satellite_org }}"
+        location: "{{ satellite_location }}"
+        hostgroup: "{{ hostgroup_name }}"
+        compute_resource: "{{ vmware_cr_name }}"
+        compute_profile: "{{ compute_profile_name }}"
+        provision_method: "image"
+        image: "{{ image_name }}"
+        root_pass: "{{ vm_root_password }}"
+        managed: true
+        build: false
+        state: present
