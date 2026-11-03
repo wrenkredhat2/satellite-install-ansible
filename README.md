@@ -10,9 +10,10 @@ ANSIBLE_HOST_KEY_CHECKING=False; ansible-playbook setup_satellite_server.yaml -i
 ANSIBLE_HOST_KEY_CHECKING=False  ansible-playbook create_satellite_server_in_vm.yaml -i ./inventory.ini --vault-password-file .vault_pass
 
 
-## Configure Contentviews, repos, etc:
+## add kvm vm provisionier
 ANSIBLE_HOST_KEY_CHECKING=False  ansible-playbook add_kvm_vm_provisionier.yaml -i ./inventory.ini --vault-password-file .vault_pass
 
+## provision kvm host
 ANSIBLE_HOST_KEY_CHECKING=False  ansible-playbook provision_kvm_host.yaml -i ./inventory.ini --vault-password-file .vault_pass
 
 # get IP of VM on host
