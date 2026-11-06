@@ -4,9 +4,17 @@
   become: false
   gather_facts: true
 
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
   vars_files:
     - vault.yaml
 
+  pre_tasks:
+    - name: Force target Python interpreter to system default
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: /usr/bin/python3
+  
   module_defaults:
     group/theforeman.foreman.foreman:
       server_url: "{{ satellite_url }}"
@@ -292,17 +300,11 @@
   vars_files:
     - vault.yaml
 
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
   tasks:
-    # --- Earliest sensible point for firewall configuration ---
-    - name: Allow HTTPS permanently in firewalld
-      ansible.builtin.command: firewall-cmd --add-service https --permanent
-      register: fw_cmd
-      changed_when: "'ALREADY_ENABLED' not in fw_cmd.stderr and fw_cmd.rc == 0"
-
-    - name: Reload firewalld to apply changes to the active session
-      ansible.builtin.command: firewall-cmd --reload
-      changed_when: false
-
+ 
     - name: Register VM with Red Hat Subscription Management via Activation Key
       ansible.builtin.redhat_subscription:
         state: present
@@ -346,7 +348,7 @@
       ansible.builtin.command: hostname -f
       register: vm_fqdn
       changed_when: false
-
+      
     - name: Test SSH ping connectivity
       ansible.builtin.ping:
 

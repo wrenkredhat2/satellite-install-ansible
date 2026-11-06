@@ -5,6 +5,9 @@
   vars_files:
     - vault.yaml
 
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
   tasks:
     - name: Ensure Satellite VM is powered on
       ansible.builtin.command: "virsh start {{ vm_name | default('satellite-server') }}"
@@ -48,6 +51,9 @@
   gather_facts: true
   vars_files:
     - vault.yaml
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
 
   module_defaults:
     group/theforeman.foreman.foreman:
@@ -125,6 +131,15 @@
         path: /etc/hosts
         regexp: '^(127\.0\.0\.1\s+)(?:satellite-server\.lab\.local\s+)?(.*)$'
         replace: '\1\2'
+
+    - name: Allow HTTPS permanently in firewalld
+      ansible.builtin.command: firewall-cmd --add-service https --permanent
+      register: fw_cmd
+      changed_when: "'ALREADY_ENABLED' not in fw_cmd.stderr and fw_cmd.rc == 0"
+
+    - name: Reload firewalld to apply changes to the active session
+      ansible.builtin.command: firewall-cmd --reload
+      changed_when: false
 
     - name: Execute Satellite Installer configuration script
       ansible.builtin.command: >

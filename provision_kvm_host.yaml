@@ -15,39 +15,39 @@
       validate_certs: "{{ satellite_validate_certs }}"
 
   tasks:
-    # 1. Update the Compute Resource to use SPICE (this drops the 'cirrus' requirement)
-    - name: Update Libvirt Compute Resource to use SPICE
-      theforeman.foreman.compute_resource:
-        organizations:
-          - "{{ satellite_org }}"
-        locations:
-          - "{{ satellite_location }}"
-        name: "Hetzner-KVM"
-        provider: "libvirt"
-        provider_params:
-          url: "qemu+ssh://root@136.243.44.117/system"
-          display_type: "VNC"
-        state: present
+#   # 1. Update the Compute Resource to use SPICE (this drops the 'cirrus' requirement)
+#   - name: Update Libvirt Compute Resource to use SPICE
+#     theforeman.foreman.compute_resource:
+#       organizations:
+#         - "{{ satellite_org }}"
+#       locations:
+#         - "{{ satellite_location }}"
+#       name: "Hetzner-KVM"
+#       provider: "libvirt"
+#       provider_params:
+#         url: "qemu+ssh://root@136.243.44.117/system"
+#         display_type: "VNC"
+#       state: present
 
-    # 2. Apply Hardware Profile (Without the invalid video keys)
-    - name: Assign Hardware Specs to Compute Profile
-      theforeman.foreman.compute_attribute:
-        compute_profile: "1-Small"
-        compute_resource: "Hetzner-KVM"
-        vm_attrs:
-          cpus: "2"
-          memory: "4096"
-          videoType: "virtio"
-          volumes_attributes:
-            0:
-              pool_name: "images"
-              capacity: "20G"
-              format_type: "qcow2"
-          interfaces_attributes:
-            0:
-              network: "default"
-              model: "virtio"
-        state: present
+#   # 2. Apply Hardware Profile (Without the invalid video keys)
+#   - name: Assign Hardware Specs to Compute Profile
+#     theforeman.foreman.compute_attribute:
+#       compute_profile: "1-Small"
+#       compute_resource: "Hetzner-KVM"
+#       vm_attrs:
+#         cpus: "2"
+#         memory: "4096"
+#         videoType: "virtio"
+#         volumes_attributes:
+#           0:
+#             pool_name: "images"
+#             capacity: "20G"
+#             format_type: "qcow2"
+#         interfaces_attributes:
+#           0:
+#             network: "default"
+#             model: "virtio"
+#       state: present
 
     - name: Provision Single RHEL 10 VM on KVM
       theforeman.foreman.host:
